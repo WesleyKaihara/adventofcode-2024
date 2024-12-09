@@ -1,114 +1,50 @@
 package main
 
 import (
-	"bufio"
-	"container/heap"
 	"fmt"
-	"log"
 	"os"
+	"slices"
+	"strings"
 )
 
-type freeSpace struct {
-	start int
-	end   int
-}
-
-type Item struct {
-	fs       freeSpace
-	priority int
-	index    int
-}
-
-type PriorityQueue []*Item
-
-func (pq PriorityQueue) Len() int { return len(pq) }
-
-func (pq PriorityQueue) Less(i, j int) bool {
-	return pq[i].priority > pq[j].priority
-}
-
-func (pq PriorityQueue) Swap(i, j int) {
-	pq[i], pq[j] = pq[j], pq[i]
-	pq[i].index = i
-	pq[j].index = j
-}
-
-func (pq *PriorityQueue) Push(x any) {
-	n := len(*pq)
-	item := x.(*Item)
-	item.index = n
-	*pq = append(*pq, item)
-}
-
-func (pq *PriorityQueue) Pop() any {
-	old := *pq
-	n := len(old)
-	item := old[n-1]
-	old[n-1] = nil
-	item.index = -1
-	*pq = old[0 : n-1]
-	return item
-}
-
-func (pq *PriorityQueue) update(item *Item, fs freeSpace, priority int) {
-	item.fs = fs
-	item.priority = priority
-	heap.Fix(pq, item.index)
+type File struct {
+	ID   int
+	Size int
 }
 
 func main() {
-	disk := parseInput("input.txt")
-	fmt.Println(partOne(disk))
+	input, _ := os.ReadFile("input.txt")
+	diskmap := strings.TrimSpace(string(input)) + "0"
+
+	fs1, fs2 := []File{}, []File{}
+	for id := 0; id*2 < len(diskmap); id++ {
+		size, free := int(diskmap[id*2]-'0'), int(diskmap[id*2+1]-'0')
+		fs1 = append(fs1, slices.Repeat([]File{{id, 1}}, size)...)
+		fs1 = append(fs1, slices.Repeat([]File{{-1, 1}}, free)...)
+		fs2 = append(fs2, File{id, size}, File{-1, free})
+	}
+	fmt.Println(run(fs1))
+	fmt.Println(run(fs2))
 }
 
-func parseInput(fileName string) (disk []int) {
-	file, err := os.Open(fileName)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-
-	for scanner.Scan() {
-		disk = make([]int, 0, len(scanner.Text()))
-		id := 0
-		for i, r := range scanner.Text() {
-			times := int(r - '0')
-			if i&1 == 1 { // is a vacancy
-				for j := 0; j < times; j++ {
-					disk = append(disk, -1)
-				}
-			} else { // is a file
-				for j := 0; j < times; j++ {
-					disk = append(disk, id)
-				}
-				id++
+func run(fs []File) (checksum int) {
+	for file := len(fs) - 1; file >= 0; file-- {
+		for free := 0; free < file; free++ {
+			if fs[file].ID != -1 && fs[free].ID == -1 && fs[free].Size >= fs[file].Size {
+				fs = slices.Insert(fs, free, fs[file])
+				fs[file+1].ID = -1
+				fs[free+1].Size = fs[free+1].Size - fs[file+1].Size
 			}
 		}
 	}
-	return
-}
-
-func partOne(disk []int) (sum int) {
-	for l, r := 0, len(disk)-1; l <= r; {
-		for disk[l] != -1 {
-			l++
-		}
-		for disk[r] == -1 {
-			r--
-		}
-		if l < r {
-			disk[l], disk[r] = disk[r], disk[l]
+	i := 0
+	for _, f := range fs {
+		for range f.Size {
+			if f.ID != -1 {
+				checksum += i * f.ID
+			}
+			i++
 		}
 	}
-
-	for i := 0; disk[i] != -1; i++ {
-		sum += disk[i] * i
-	}
-	return
-}
-
-func isVacant(i int) bool {
-	return i&1 == 1
+	return checksum
 }
